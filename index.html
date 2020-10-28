@@ -1,9 +1,17 @@
 <!DOCTYPE html>
 <head>
-  <title>NLG Demo</title>
+  <title>LM comp</title>
   <script src="tools/jquery-3.1.1.min.js"></script>
   <script src="tools/bootstrap.min.js"></script>
-  <script src="tools/nlgWebsite.js"></script>
+  <!--script src="tools/nlgWebsite.js"></script-->
+  <script src="http://www.amcharts.com/lib/4/core.js"></script>
+  <script src="http://www.amcharts.com/lib/4/charts.js"></script>
+  <script src="http://www.amcharts.com/lib/4/maps.js"></script>
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]}});
+</script><script type="text/javascript" async
+  src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-MML-AM_CHTML">
+</script>
   <link rel="stylesheet" href="tools/bootstrap.min.css">
   <link rel="stylesheet" href="tools/style.css">
   <link rel="shortcut icon" href="tools/favicon.ico" type="image/x-icon">
@@ -13,30 +21,247 @@
 <body>
 	<div class="container">
 		<div class="page-header">
-  		<h1>NLG demo</h1>
-  		<h2><small>Test out an NLG system here!</small></h2>
+  		<h1>Language Model Comparison</h1>
+  		<h2><small>Compare per-word likelihood scores of two language models (OpenAi GPT and LSTM)</small></h2>
   	</div>
-  	<div class="row">
-  		<div class="col-sm-12">
-  			<form>
-  				<input id="enableDialogue" type="checkbox" onchange="checkboxes(this)">&nbsp;This is a dialogue
-  				<br>
-  				<input id="separateTalkTurns" type="checkbox" onchange="checkboxes(this)">&nbsp;These are disconnected tries
-  			</form>		
-  		</div>
-  	</div>
-  	<hr>
+
+    <div class="row">
+      <div class="col-sm-12">
+      </div>
+    </div>
+
   	<div class="row">
   		<div class="col-sm-6">
   			<div id="history"></div>
   		</div>
   	</div>
-  	<div class="row">
-  		<div class="col-sm-12">
-  			<textarea id="inputfield" rows="2" cols="100" style="color: grey;font-style: italic;">Enter your text here.</textarea>
-  			<br>
-  			<button class="btn btn-primary" onclick="getResponse()">Submit</button>
-  		</div>
-  	</div>
+    <!--div class="row">
+      <canvas id="myChart"  width="700" height="450"></canvas>
+    </div-->
+
+    <div class="row">
+    <div class="col-md-8" style="border-width:1pt;border-color:#000000;border-style:solid;background-color:#eeeeee;vertical-align:middle" >
+    <div id="chartdiv" style="max-width:1000px;height:640px;background-color:#eeeeee;text-align:center;" > 
+      <div style="font-size: 30pt;color:#666666;vertical-align:middle;line-height:640px">
+      Empty Chart
+      </div>
+    </div>
   </div>
-</bod>
+    <div class="col-md-4"><h4>Please enter a sentence:</h4>
+        <div style="text-align:center;">
+        <textarea id="inputfield" rows="4" cols="50" ></textarea>
+        <br>
+        <button class="btn btn-primary" onclick="getResponse2()">Submit</button>
+        <br>
+        </div>
+        <h4>Instructions</h4>
+        <div><b>Entering a Sentence:</b> Please type in a sentence in the text box above and click submit to create a graph.  Please note that the lstm model expects capitalization.
+        </div><br>
+        <div><b>Interpreting the Chart:</b> The chart shows the prediction scores of two models (lstm and openai-gpt) for each word in the sentence given the previous words.  The scores shown are negative loglikelihoods: $-log(p(w_t| w_1...w_{t-1}))$, so <b style="color:red">lower scores are better </b>.
+          <br> The first word is not scored, since there would be no previous words to condition on.
+        </div><br>
+        <div><b>Additional Notes:</b> 
+          <ul>
+            <li> It sometimes takes several seconds for a new chart to be created.</li>
+            <li> A chart can be saved using the menu in the top right corner (the ... button).</li>
+            <li> You can use the cursor to selectively zoom.</li>
+            <li> The lstm model generally counts each word as being separated by spaces.  Openai uses BPE (which effectively breaks some rare words into frequently-appearing character sequences).</li>
+          </ul>
+        </div>
+    </div>
+  </div>
+    <hr>
+    <div class="row">
+      <h4>Some examples:</h4>
+      <p> <b> High confidence at ends of phrases: </b> When conditioning on "I do", the model is very confident about the next token being "n't", which causes the overall neg. loglikelihood to decrease a lot for "I don't know".  There's similar behavior for the ends of common phrases like "a lot of":</p>
+      <img src="idontknow.svg" alt="I don't know" height="400px">
+      <img src="alotof.svg" alt="a lot of" height="400px">
+      <br><br>
+      <p> <b> Repetition: </b> Another observation is that repetitions cause the neg. loglikelihood to start to go down:</p>
+      <img src="idontknowreptd.svg" alt="I don't know (repeating)" height="400px">
+      <img src="tiredreptd.svg" alt="I am tired (repeating)" height="400px">
+      <br><br>
+      <p> <b> Content vs function words: </b> Neg. loglikelihood scores actually fluctuate quite a bit over natural language (particularly between content words like "grocery" vs. function words like "to"):</p>
+      <img src="iamplanningtogotothegrocerystore.svg" alt="I am planning to go to the grocery store" height="400px">      
+      <img src="astronomy.svg" alt="Alex was interested in astronopmy." height="400px">
+    </div>
+
+  </div>
+</body>
+<script>
+  var inpF, hist,chart,canvas,context;
+var inpFdefault = "Enter your text here.";
+
+window.onload = setup;
+function getResponse2(){
+  // Pushing prompt to the history
+  //canvas = document.getElementById('myChart');
+  //context = canvas.getContext('2d');
+
+  var prompt = inpF.value;
+  if (prompt === inpFdefault || prompt === "")
+    return; // show warning message?
+  hist = document.getElementById("history");
+  chartdiv = document.getElementById("chartdiv");
+  chartdiv.style.backgroundColor = "#ffffff";
+  chartdiv.style.paddingRight = "10px";
+  //hist.innerHTML = `<div class="history user">${prompt}</div>`;
+  inpF.value = "";
+  console.log([inpF.value]);
+  console.log(prompt);
+
+  // Sending stuff to server (for now, no server)
+  var nlgResponse = "SWABHA's MY FAVORITE NLPer!";
+  toSend = $.trim(prompt).replace(/\n/g,"|||");
+  var xmlHttp = new XMLHttpRequest();
+  xmlHttp.onreadystatechange = function() { 
+    if (xmlHttp.readyState == 4 && xmlHttp.status == 200){
+      console.log(xmlHttp.responseText);
+      nlgResponse = xmlHttp.responseText;
+      a = nlgResponse.split("|");
+      var b = a[0].split(',').map(Number);
+      var tok = a[1].split('~');
+      var chart = am4core.createFromConfig({"export": {"enabled": true}},"chartdiv", am4charts.XYChart);
+      var data = [];
+      if (a.length> 2){
+          var b2 = a[2].split(',').map(Number);
+          var tok2 = a[3].split('~');
+      }
+      j = -1
+      if (a.length > 2){
+        var wordtok = tok2[j+1];
+        if(wordtok == "``"){
+          wordtok = "\"";
+        }
+        if(wordtok == "''"){
+          wordtok = "\"";
+        }
+      }
+      for(var i = -1; i < b.length;i++){
+        if (tok[i+1] == "<w>"){
+          continue;
+        }
+        if(a.length > 2){
+            if (i != -1 && j != -1){
+              data.push({
+              "category": i+":"+tok[i+1],
+              "value1": b[i],
+              "value2": b2[j]});
+            }
+            wordtok = wordtok.substring(tok[i+1].length);
+            if (wordtok.length==0 ){
+              j += 1;
+              wordtok = tok2[j+1];
+              if(wordtok == "</s>"){
+                  j += 1;
+                  wordtok = tok2[j+1];
+              }
+              if(wordtok == "``"){
+                  wordtok = "\"";
+              }
+              if(wordtok == "''"){
+                  wordtok = "\"";
+              }
+            }
+        }
+        else{
+          if (i != -1 ){
+          data.push({
+            "category": i+":"+tok[i+1],
+            "value1": b[i]});
+        }
+        }
+      }
+      var dictionary = {};
+
+      // Add data
+      chart.data = data;
+      var title = chart.titles.create();
+      title.text = prompt;
+      title.fontSize = 16;
+      title.marginBottom = 30;
+
+      // Create axes
+      var categoryAxis = chart.xAxes.push(new am4charts.CategoryAxis());
+      categoryAxis.dataFields.category = "category";
+      categoryAxis.renderer.grid.template.location = 0;
+      categoryAxis.renderer.minGridDistance = 1;
+      categoryAxis.title.text = "Timestep";
+
+      var valueAxis = chart.yAxes.push(new am4charts.ValueAxis());      
+      valueAxis.min = 0; 
+      valueAxis.max = 20;
+      valueAxis.renderer.minGridDistance = 10;
+      valueAxis.title.text = "Negative Loglikelihood";
+
+
+      // Create series
+      var series = chart.series.push(new am4charts.StepLineSeries());
+      series.dataFields.valueY = "value1";
+      series.dataFields.categoryX = "category";
+      series.strokeWidth = 2;
+      series.stroke = am4core.color("#611aff");
+      series.name = "openai";
+      var circleBullet = series.bullets.push(new am4charts.CircleBullet());
+      circleBullet.circle.fill = am4core.color("#611aff");
+      series.tooltipText = "{categoryX}: [bold]{valueY}[/]";
+      series.tooltip.getFillFromObject = false;
+      series.tooltip.background.fill = am4core.color("#611aff");
+
+
+
+      if(a.length > 2){
+          var series2 = chart.series.push(new am4charts.StepLineSeries());
+          series2.dataFields.valueY = "value2";
+          series2.dataFields.categoryX = "category";
+          series2.strokeWidth = 2;
+          series2.stroke = am4core.color("#FF325A");
+          series2.name = "lstm"
+          var circles2 = series2.bullets.push(new am4charts.CircleBullet());
+          circles2.circle.fill = am4core.color("#FF325A");
+          series2.tooltipText = "{categoryX}: [bold]{valueY}[/]";
+          series2.tooltip.getFillFromObject = false;
+          series2.tooltip.background.fill = am4core.color("#FF325A");
+      }
+      chart.exporting.menu = new am4core.ExportMenu();
+      chart.legend = new am4charts.Legend();
+
+      /* Create a cursor */
+      chart.cursor = new am4charts.XYCursor();
+      chart.cursor.behavior = "zoomXY";
+
+
+
+      //var bullet = series.bullets.push(new am4charts.CircleBullet());
+      //bullet.fill = am4core.color("white");
+      //bullet.strokeWidth = 1;
+    }
+  }
+  xmlHttp.open("POST", window.location.href+"?inputText="+toSend, true);
+  xmlHttp.send();
+  }
+
+
+function setup(){
+  /*Input field aesthetics*/
+  inpF = document.getElementById("inputfield");
+  inpF.onfocus = function(){
+    if(inpF.value === inpFdefault){
+      inpF.style = "color: black;font-style: normal";
+      inpF.value = "";
+    }
+  };
+  inpF.onblur = function(){
+    if (inpF.value === ""){
+      inpF.style = "color: grey;font-style: italic;";
+      inpF.value = inpFdefault;
+    }
+  };
+  inpF.onkeyup = function(e){
+    if (e.keyCode === 13 && !e.shiftKey){
+      getResponse2();
+    }
+  };
+}
+</script>
+</html>

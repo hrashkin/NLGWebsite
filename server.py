@@ -34,7 +34,7 @@ class MyServer(SimpleHTTPRequestHandler):
     self.wfile.write(response.encode())
     
 def run(nlg, serverClass=HTTPServer, handlerClass=MyServer):
-  serverAddress = ('0.0.0.0', 8000)
+  serverAddress = ('0.0.0.0', 8001)
   httpd = serverClass(serverAddress, handlerClass)
   
   httpd.nlgModel = nlg
